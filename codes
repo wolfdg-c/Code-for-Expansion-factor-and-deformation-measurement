@@ -1,0 +1,459 @@
+#Code for Expansion factor and deformation measurement
+def pointsMoving = data.collect { [it[0], it[1]] }
+def XMax = Math.ceil(pointsFixed.collect { it[0] }.max()).intValue()
+def XMin = Math.floor(pointsFixed.collect { it[0] }.min()).intValue()
+def YMax = Math.ceil(pointsFixed.collect { it[1] }.max()).intValue()
+def YMin = Math.floor(pointsFixed.collect { it[1] }.min()).intValue()
+def XRange = XMax - XMin
+def YRange = YMax - YMin
+def dXYstep = (int) Math.round(Math.sqrt(XRange * YRange) / 30)
+def Xpoints = (XMin..(XMax + dXYstep)).step(dXYstep)
+def Ypoints = (YMin..(YMax + dXYstep)).step(dXYstep)
+def xyzSim = []
+Xpoints.each { x ->
+S-53
+Ypoints.each { y ->
+xyzSim << [x, y]
+}
+}
+// Write to CSV
+def outputFile = new File(folderPath, 'coords_similarity.csv')
+def writer = new FileWriter(outputFile)
+xyzSim.each { coords ->
+writer.write(coords.join(',') + '\n')
+}
+writer.close()
+def buildTransform(File landmarksPath, String transformType, int nd, boolean needInverse, double
+invTolerance, int maxIters) {
+LandmarkTableModel ltm = new LandmarkTableModel(nd)
+try {
+ltm.load(landmarksPath)
+} catch (IOException e) {
+e.printStackTrace()
+return null
+}
+BigWarpTransform bwTransform = new BigWarpTransform(ltm, transformType)
+RealTransform xfm = bwTransform.getTransformation()
+if (xfm instanceof Wrapped2DTransformAs3D)
+xfm = ((Wrapped2DTransformAs3D) xfm).getTransform()
+if (needInverse) {
+if (transformType.equals("Thin Plate Spline")) {
+xfm.getOptimzer().setMaxIters(maxIters)
+xfm.getOptimzer().setTolerance(invTolerance)
+}
+xfm = xfm.inverse()
+}
+return xfm
+}
+def transformPoints(File landmarksPath, File inCsv, File outCsv, String inverseOrForward,
+S-54
+String transformType, double invTolerance, int invMaxIters,
+boolean csvHasHeader, double sx, double sy, double sz) {
+boolean needInverseTransform = inverseOrForward.equals("Moving to target")
+// Read the input points
+List<String> lines
+try {
+lines = Files.readAllLines(Paths.get(inCsv.getAbsolutePath()))
+} catch (IOException e) {
+e.printStackTrace()
+return
+}
+// Get the transformation to apply
+int nd = lines.get(0).split(",").length
+RealTransform transform = buildTransform(landmarksPath, transformType, nd, needInverseTransform,
+invTolerance, invMaxIters)
+// Transform all points
+List<String> outputLines = []
+double[] result = new double[nd]
+boolean firstLine = true
+for (String l : lines) {
+// Add the first line to the output if it's a header
+if (firstLine && csvHasHeader) {
+outputLines.add(l)
+firstLine = false
+continue
+}
+// Parse line
+double[] pt = Arrays.stream(l.split(",")).mapToDouble(Double::parseDouble).toArray()
+double[] scale = [sx, sy, sz] as double[]
+// Elementwise multiplication of pt and scale
+double[] scaledpt = new double[pt.length]
+for (int i = 0; i < pt.length; i++) {
+scaledpt[i] = pt[i] * scale[i]
+}
+// Transform point
+try {
+S-55
+transform.apply(scaledpt, result)
+} catch (Exception e) {
+System.err.println("Warning: failed to transform " + Arrays.toString(scaledpt))
+Arrays.fill(result, Double.NaN)
+}
+outputLines.add(Arrays.toString(result).replaceAll("[\\[\\]]", "").replaceAll(" ", ""))
+}
+// Write output
+try {
+Files.write(Paths.get(outCsv.getAbsolutePath()), outputLines)
+} catch (IOException e) {
+e.printStackTrace()
+}
+}
+MATLAB script: AllParts_measurement_error_analysis_createMask.m
+% this code was adapted from the code displaying deformation fields
+% used in Jurriens, D., van Batenburg, V., Katrukha, E. A., & Kapitein, L. C. (2020). Mapping the neuronal
+cytoskeleton using expansion microscopy. In Methods in Cell Biology.
+https://doi.org/10.1016/bs.mcb.2020.04.018
+homeFolder = "C:\Users\...";
+experimentFolderName = "\test";
+experimentFolder = homeFolder + experimentFolderName;
+runPart = 2;
+% Instructions:
+% 1) generate registration landmarks manually using BigWarp and save them
+% as landmarks.csv
+% 2) run createSimOrigAndThinPlateCoords.groovy, with the "folderPath"
+% updated to correspond to the folder containing landmkars.csv
+% 3) update "experimentFolder" above to correspond to the same folder and
+% run this script to use "coords_thin_plate.csv" to calcualte the
+% deformation field and measurement errors matrix.
+% change runPart to 1 to manually choose analysis steps
+% to run below if needed
+previousDir = pwd;
+S-56
+cd(experimentFolder);
+%% stages of analysis (1 = run, 0 = skip):
+if runPart == 1 %manually set individual parts
+calculateDeformationField = 0;
+collectMeasurements = 0;
+measureErrors = 0;
+elseif runPart == 2
+calculateDeformationField = 1;
+collectMeasurements = 1;
+measureErrors = 1;
+end
+%% settings:
+% number of dimensions in the nonrigid transformation (2D vs 3D data).
+% only 2D supported by this script
+nD = 2;
+%% size of expanded (target) image in scaled units (e.g. um)
+detectSize = 1;
+if detectSize
+landmarks=importdata('landmarks.csv');
+if size(landmarks.data,2) == 4
+nD = 2;
+elseif size(landmarks.data,2) == 6
+disp('error: detectSize not set up for 3D');
+else
+disp('error: landmarks.data should have 4 or 6 columns');
+end
+pointsFixed = landmarks.data(:,3:4);
+pointsMoving = landmarks.data(:,1:2);
+XMax = ceil(max(pointsFixed(:,1)));
+XMin = floor(min(pointsFixed(:,1)));
+YMax = ceil(max(pointsFixed(:,2)));
+YMin = floor(min(pointsFixed(:,2)));
+ZMax = 1;
+XRange = XMax - XMin;
+YRange = YMax - YMin;
+S-57
+else % manually set the size of the expanded image
+XMax=8178;
+YMax=7028;
+XMin=0;
+YMin=0;
+XRange = XMax - XMin;
+YRange = YMax - YMin;
+ZMax=1;
+if nD == 2; ZMax=1; end
+end
+%%
+%image sampling: increase the step size to sample the image more sparsely
+dXYstep = round(sqrt(XRange*YRange)/30);
+dZstep = 1;
+% create a mask using the convex hull containing all landmarks
+bUseMask = 1;
+%step size along meas length axis in final plot. This controls how much
+%binning is done before displaying measurement error plot
+%in sclaed units
+dMeasStep = 10;
+%% calculateDeformationField
+% generate a vector field that indicates the nonrigid component of
+% transformation from post-expansion image to ideal uniformly expanded
+% coordiantes
+% optional: export slices of the deformation field
+if calculateDeformationField
+%number of tiff images in the mask sequence (# of Z planes)
+nFR=floor(ZMax / dZstep);
+% whether to export deformation field in XY as z-stack
+bExportXYdefField=true;
+% read coordinates from similarity array
+xySim=importdata('coords_similarity.csv');
+sz=size(xySim);
+boolmarks=zeros(sz(1),1);
+S-58
+if (bUseMask)
+%generate mask using convex hull of landmarks
+hullIndices = convhull(pointsFixed(:,1), pointsFixed(:,2));
+in_hull = inpolygon(xySim(:,1), xySim(:,2), pointsFixed(hullIndices,1), pointsFixed(hullIndices,2));
+boolmarks = double(in_hull); % Convert logical to numeric
+else
+boolmarks=boolmarks+1;
+end
+% import transformed coordinates in thin plate
+xySpline=importdata('coords_thin_plate.csv');
+%vector difference between coordinates in 'similarity' and 'thin plate'
+diffvect=xySim-xySpline;
+% calculate absolute length of deformation vectors
+totNFilt=sum(boolmarks);
+displall=zeros(totNFilt,1);
+displxy=zeros(totNFilt,1);
+displz=zeros(totNFilt,1);
+count=0;
+for i=1:sz(1)
+if(boolmarks(i))
+count=count+1;
+displall(count)=norm(diffvect(i,:));
+displxy(count)=norm(diffvect(i,1:2));
+if nD == 3
+displz(count)=abs(diffvect(i,3));
+end
+end
+end
+%export deformation field in 2D (XY)
+if (bExportXYdefField)
+h1=figure;
+if nD==3
+filt=(abs(xySim(:,3)-k)<0.00001);
+filt=filt&boolmarks;
+else
+filt = 1&boolmarks;
+end
+S-59
+xy=xySpline(filt,1:2);
+xyvect=diffvect(filt,1:2);
+quiver(xy(:,1),xy(:,2),xyvect(:,1),xyvect(:,2),'AutoScale','off');
+axis equal
+set(gca,'Ydir','reverse');
+xlim([0 XMax]);
+ylim([0 YMax]);
+set(gcf,'Units','pixels');
+set(gcf,'Position',[20 20 600 500]);
+set(gca,'Units','pixels');
+set(gca,'Position',[20 20 550 550]);
+saveas(gcf,strcat('XY_sim_thinpl.png'));
+end
+end
+%% collectMeasurements
+%for each pair of points in the image, find the correct distance between
+%them assuming uniform expansion (similarity transformation). Find the
+%'measured' distance between them (after nonrigid transformation). The
+%difference between these lengths is the measurement error for that pair of
+%points
+if collectMeasurements
+boolmarksDec = boolmarks;
+nPointsDec = sum(boolmarksDec);
+xySimDec = NaN(nPointsDec,nD);
+diffvectDec = NaN(nPointsDec,nD);
+j = 1;
+for i = 1:length(boolmarks)
+if boolmarksDec(i)
+xySimDec(j,:) = xySim(i,:);
+diffvectDec(j,:) = diffvect(i,:);
+j = j + 1;
+end
+end
+if j ~= nPointsDec + 1
+S-60
+disp('error: indices do not match!!');
+end
+nMeasDec = nPointsDec * (nPointsDec - 1);
+allMeasurements = NaN(nMeasDec,3);
+%col 1 is meas length
+%col 2 is meas length bin (i.e. which index in measLengths array)
+%col 3 is meas error
+%one row for every measurment (i.e. for every pair of points in the
+%masked region)
+measNum = 1;
+for i = 1:nPointsDec
+for j = 1:nPointsDec
+if i ~= j
+measLength = norm(xySimDec(j,:)-xySimDec(i,:));
+measError = norm(diffvectDec(j,:)-diffvectDec(i,:));
+allMeasurements(measNum,:) = [measLength NaN measError];
+measNum = measNum + 1;
+end
+end
+end
+end
+%% measureErrors
+%bucket measurement errors by measurement length, and find the average and
+%S.D. for each measurement length bucket
+if measureErrors
+%compute bucket number for each length measurement
+allMeasurements(:,2) = round(allMeasurements(:,1)/dMeasStep + 0.5);
+maxMeas = max(allMeasurements(:,1));
+measLengths = dMeasStep/2:dMeasStep:ceil(maxMeas+dMeasStep);
+%measLength 0 only exists if dMeasStep>min pix spacing after decimation
+%in any direction
+measErrMtx = zeros(length(measLengths),4);
+measErrMtx(:,1) = measLengths;
+%each row is a measurement length bucket
+%for row n:
+S-61
+%col 1: middle of bucket n (bucket 1 starts at measLength 0)
+%col 2: number of measurements in this bucket
+%col 3: average of measurement errors for this bucket
+%col 4: std dev of measuremnt errors for this bucket
+%add up number of measurments (col 2) and average error (col 3)for each bucket
+nMeasDec = size(allMeasurements,1);
+for i = 1:nMeasDec
+bucket = allMeasurements(i,2);
+measErrMtx(bucket,2) = measErrMtx(bucket,2) + 1;
+measErrMtx(bucket,3) = measErrMtx(bucket,3) + allMeasurements(i,3);
+end
+measErrMtx(:,3) = measErrMtx(:,3)./measErrMtx(:,2);%error is inf when N = 0
+%add up SD (col 4) for each bucket
+for i = 1:nMeasDec
+bucket = allMeasurements(i,2);
+%sum up squared difference between mesurement error and average error
+difference = allMeasurements(i,3)-measErrMtx(bucket,3);
+measErrMtx(bucket,4) = measErrMtx(bucket,4) + difference^2;
+end
+measErrMtx(:,4) = sqrt(measErrMtx(:,4)./measErrMtx(:,2));%div by N and take sqrt
+if nMeasDec ~= sum(measErrMtx(:,2))
+disp('Error: nMeasDec does not equal sum(measErrMtx(:,2)')
+end
+figure;
+hold on;
+% Filter out NaNs
+iKeep = ~isnan(measErrMtx(:,3));
+% Define the upper and lower bounds for the shaded area (mean ± S.D.)
+upperBound = measErrMtx(iKeep,3) + measErrMtx(iKeep,4);
+lowerBound = measErrMtx(iKeep,3) - measErrMtx(iKeep,4);
+% Plot the mean line
+plot(measErrMtx(iKeep,1), measErrMtx(iKeep,3), 'b', 'LineWidth', 1.5);
+% Create the shaded area
+xValues = measErrMtx(iKeep,1); % x-axis values
+fill([xValues; flipud(xValues)], [upperBound; flipud(lowerBound)], 'b', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+% Add labels and legend if needed
+S-62
+xlabel('Measurement Distance (μm)', 'FontName', 'Arial', 'FontSize', 12);
+ylabel('Measurement Error (μm)', 'FontName', 'Arial', 'FontSize', 12);
+legend('Mean', 'Standard Deviation');
+set(gca, 'FontName', 'Arial', 'FontSize', 12);
+hold off;
+% Extract x-axis and mean y values
+xValues = measErrMtx(iKeep, 1); % x-axis values
+meanValues = measErrMtx(iKeep, 3); % mean values for y-axis
+% Combine x and y mean values into a single matrix
+meanData = [xValues, meanValues];
+% Save to a CSV file
+csvwrite('mean_points.csv', meanData); % Saves to a file named 'mean_points.csv'
+end
+cd(previousDir)
+Fiji script: bigwarpSimilarityPart.groovy
+#@ File (label="Landmark file") landmarksPath
+#@ Integer (label="Number of dimensions", value=2) nd
+#@ String (label="Direction", choices={"Forward", "Inverse" }, value="Forward") direction
+import mpicbg.models.*;
+import bigwarp.landmarks.LandmarkTableModel;
+import net.imglib2.util.*;
+// load landmarks
+tableModel = new LandmarkTableModel( nd );
+try
+{
+tableModel.load( landmarksPath );
+} catch ( IOException e )
+{
+e.printStackTrace();
+return;
+}
+def getModel( final int numDims )
+{
+S-63
+if( numDims == 2 )
+return new SimilarityModel2D();
+else if( numDims == 3 )
+return new SimilarityModel3D();
+else
+return null;
+}
+/**
+* Determinant of a 2d transform stored as a row-major 3d homogeneous matrix array
+*/
+def det2d( final double[][] mtx )
+{
+return (mtx[0][0] * mtx[1][1]) - (mtx[0][1] * mtx[1][0]);
+}
+/**
+* Determinant of a 3d transform stored as a row major 4d homogeneous matrix array
+*/
+def det3d( final double[][] mtx )
+{
+return mtx[0][0] * mtx[1][1] * mtx[2][2] +
+mtx[1][0] * mtx[2][1] * mtx[0][2] +
+mtx[2][0] * mtx[0][1] * mtx[1][2] -
+mtx[0][2] * mtx[1][1] * mtx[2][0] -
+mtx[1][2] * mtx[2][1] * mtx[0][0] -
+mtx[2][2] * mtx[0][1] * mtx[1][0];
+}
+/**
+* Need this until Fiji's mpicbg versions are updated
+*/
+def double[][] toMatrix2d( final SimilarityModel2D model )
+{
+a = new double[ 6 ];
+model.toArray( a );
+return [[ a[0], -a[1], a[4] ],
+[ a[1], a[0], a[5] ]] as double[][];
+}
+/**
+* Need this until Fiji's mpicbg versions are updated
+S-64
+*/
+def double[][] toMatrix3d( final SimilarityModel3D model )
+{
+mtx = new double[ 3 ][ 4 ];
+model.toMatrix( mtx );
+return mtx;
+}
+model = getModel( nd );
+if( model == null )
+{
+println( "Only works for 2 or 3 dimensions");
+return;
+}
+// fit the model
+int numActive = tableModel.numActive();
+int ndims = tableModel.getNumdims();
+mvgPts = new double[ ndims ][ numActive ];
+tgtPts = new double[ ndims ][ numActive ];
+tableModel.copyLandmarks( mvgPts, tgtPts );
+double[] w = new double[ numActive ];
+Arrays.fill( w, 1.0 );
+try {
+model.fit( mvgPts, tgtPts, w );
+} catch (NotEnoughDataPointsException e) {
+e.printStackTrace();
+} catch (IllDefinedDataPointsException e) {
+e.printStackTrace();
+}
+themodel = model;
+if( direction.equals( "Inverse" ) )
+{
+themodel = model.createInverse();
+println( themodel )
+}
+if( nd == 2 )
+S-65
+{
+det = det2d( toMatrix2d( themodel ));
+avgscale = Math.sqrt( det );
+}
+else if( nd == 3 )
+{
+det = det3d( toMatrix3d( themodel ));
+avgscale = Math.cbrt( det );
+}
+println( 'determinant : ' + det );
+println( 'avgerage scale : ' + avgscale );
+
