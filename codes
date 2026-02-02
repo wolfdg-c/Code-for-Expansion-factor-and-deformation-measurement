@@ -1,4 +1,5 @@
 #Code for Expansion factor and deformation measurement
+#codes are adapted from the following references, please cite them once use our codes: Jurriens, D., van Batenburg, V., Katrukha, E. A. & Kapitein, L. C. in Expansion Microscopy for Cell Biology Vol. 161 (eds. Guichard, P. & Hamel, V.) 105–124 (Academic Press, 2021). Damstra, H. G. et al. GelMap: intrinsic calibration and deformation mapping for expansion microscopy. Nat. Methods 20, 1573–1580 (2023). Zhang, H., Ding, L., Hu, A. et al. TEMI: tissue-expansion mass-spectrometry imaging. Nat Methods 22, 1051–1058 (2025). https://doi.org/10.1038/s41592-025-02664-9.
 def pointsMoving = data.collect { [it[0], it[1]] }
 def XMax = Math.ceil(pointsFixed.collect { it[0] }.max()).intValue()
 def XMin = Math.floor(pointsFixed.collect { it[0] }.min()).intValue()
