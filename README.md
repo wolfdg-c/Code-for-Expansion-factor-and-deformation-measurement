@@ -15,8 +15,7 @@ Recommended landmarks
 	Distinct, reproducible structural features visible in both images
 (e.g., isolated puncta, holes, or unique local features)
 	Landmarks should be spatially distributed across the field of view
-	At least 20 landmarks are recommended for stable registration
-No preprocessing beyond standard contrast adjustment is required.
+    While a minimum of ~20 landmarks is typically sufficient for stable registration, the required number of landmarks depends on the image resolution and the spatial scale of features of interest. After landmark placement and registration, users should visually inspect the alignment quality across the entire field of view to confirm that corresponding structures are well aligned down to the resolution scale relevant to their analysis. If local misalignments are observed at the scale of interest, additional landmarks should be added in those regions and the registration repeated until satisfactory alignment is achieved.
 
 2. Global (uniform) model: similarity transform
 The Fiji Groovy script bigwarpSimilarityPart.groovy fits a SimilarityModel 2D to the landmark pairs, estimating:
@@ -84,10 +83,7 @@ C. Definition of deformation
 Deformation is defined as:
 diffvect = xySim - xySpline;
 Interpretation
-	Small ‖diffvect‖ → locally uniform expansion
 	Large ‖diffvect‖ → local distortion or nonuniformity
-Caveat
-Results depend on landmark quality and TPS regularization.
 
 D. TPS inverse computation
 When transforming moving → target, the TPS inverse is computed iteratively using:
