@@ -109,7 +109,7 @@ Only relative displacement changes inter-point distances; common-mode shifts do 
 
 G. Error binning
 Measurement errors are binned by distance:
-dMeasStep = 10; % µm
+dMeasStep = 10; % µm, measurement errors were binned using a distance step of 10 µm in post-expansion (target) coordinates.
 Why
 Binning reduces noise and yields smooth, interpretable curves.
 
